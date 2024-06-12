@@ -1,0 +1,28 @@
+name: riedenv
+channels:
+    - conda-forge
+    - defaults
+dependencies:
+    - python=3.9
+    - pytest
+    - numpy
+    - scipy
+    - scikit-learn
+    - matplotlib
+    - pythonocc-core=7.5.1
+    - occt=7.5.1
+    - pythreejs
+    - pip
+    - pandas
+    - pytorch
+    - sphinx
+    - sphinx_rtd_theme
+    - flask=2.2.2
+    - pip:
+        - gmsh
+        - graphviz
+        - lime
+        - sympy
+        - iteration_utilities
+        - autograd
+        - pymoo
