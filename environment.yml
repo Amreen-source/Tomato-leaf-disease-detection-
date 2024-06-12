@@ -1,4 +1,4 @@
-name: riedenv
+name: tomato_leaf_disease
 channels:
     - conda-forge
     - defaults
