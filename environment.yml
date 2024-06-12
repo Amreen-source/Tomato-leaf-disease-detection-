@@ -9,14 +9,10 @@ dependencies:
     - scipy
     - scikit-learn
     - matplotlib
-    - pythonocc-core=7.5.1
-    - occt=7.5.1
-    - pythreejs
+    - sklearn
+    - pytorch
     - pip
     - pandas
-    - pytorch
-    - sphinx
-    - sphinx_rtd_theme
     - flask=2.2.2
     - pip:
         - gmsh
