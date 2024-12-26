@@ -1,1 +1,221 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"name":"python","version":"3.10.13","mimetype":"text/x-python","codemirror_mode":{"name":"ipython","version":3},"pygments_lexer":"ipython3","nbconvert_exporter":"python","file_extension":".py"},"kaggle":{"accelerator":"nvidiaTeslaT4","dataSources":[{"sourceId":1105687,"sourceType":"datasetVersion","datasetId":619181}],"dockerImageVersionId":30683,"isInternetEnabled":true,"language":"python","sourceType":"script","isGpuEnabled":true}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"# %% [markdown]\n# # Introduction\n# <center><img src=\"https://i.hizliresim.com/bw0mh42.png\" alt=\"Görsel\" style=\"max-width: 100%; height: 400px;\"> <center>\n#     <br>\n# \n# <center> <b> The classification of tomato leaf diseases using Convolutional Neural Networks (CNN), EfficientNetB3, and VGG16 architectures. The dataset encompasses images of tomato leaves afflicted by various diseases such as Bacterial Spot, Early Blight, Late Blight, Leaf Mold, Septoria Leaf Spot, Spider Mites, Target Spot, and Yellow Leaf Curl Virus.  <b><center>\n# \n# \n\n# %% [markdown]\n# # Python Libraries\n# \n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:44.089965Z\",\"iopub.execute_input\":\"2024-05-28T17:35:44.090616Z\",\"iopub.status.idle\":\"2024-05-28T17:35:44.098642Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:44.090584Z\",\"shell.execute_reply\":\"2024-05-28T17:35:44.097815Z\"}}\nimport os\nimport itertools\n\nimport numpy as np\nimport pandas as pd\nimport seaborn as sns\nsns.set_style('darkgrid')\nimport matplotlib.pyplot as plt\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import confusion_matrix, classification_report\n\nimport tensorflow as tf\nfrom tensorflow import keras\nfrom tensorflow.keras.models import Sequential\nfrom tensorflow.keras.optimizers import Adam, Adamax\nfrom tensorflow.keras.preprocessing.image import ImageDataGenerator\nfrom tensorflow.keras.layers import Layer, Conv2D, MaxPooling2D, Flatten, Dense, Dropout, GlobalAveragePooling2D, BatchNormalization, UpSampling2D, Concatenate, Input\nfrom tensorflow.keras.models import Model\nfrom tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau\nfrom tensorflow.keras.applications import EfficientNetB3\nfrom keras.applications import VGG16\n\n# ignore the warnings\nimport warnings\nwarnings.filterwarnings('ignore')\n\n# %% [markdown]\n# # Read and Analyse Data\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:46.965891Z\",\"iopub.execute_input\":\"2024-05-28T17:35:46.966385Z\",\"iopub.status.idle\":\"2024-05-28T17:35:46.973473Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:46.966347Z\",\"shell.execute_reply\":\"2024-05-28T17:35:46.972448Z\"}}\ndef loading_the_data(data_dir):\n    filepaths = []\n    labels = []\n\n    folds = os.listdir(data_dir)\n\n    for fold in folds:\n        foldpath = os.path.join(data_dir, fold)\n        filelist = os.listdir(foldpath)\n        for file in filelist:\n            fpath = os.path.join(foldpath, file)\n            \n            filepaths.append(fpath)\n            labels.append(fold)\n\n    Fseries = pd.Series(filepaths, name='filepaths')\n    Lseries = pd.Series(labels, name='labels')\n\n    df = pd.concat([Fseries, Lseries], axis=1)\n    \n    return df\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:50.032562Z\",\"iopub.execute_input\":\"2024-05-28T17:35:50.033180Z\",\"iopub.status.idle\":\"2024-05-28T17:35:50.077640Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:50.033146Z\",\"shell.execute_reply\":\"2024-05-28T17:35:50.076764Z\"}}\ndata_dir = '/kaggle/input/tomatoleaf/tomato/train'\ndf = loading_the_data(data_dir)\n\ndf\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:52.249118Z\",\"iopub.execute_input\":\"2024-05-28T17:35:52.249513Z\",\"iopub.status.idle\":\"2024-05-28T17:35:52.259317Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:52.249485Z\",\"shell.execute_reply\":\"2024-05-28T17:35:52.258229Z\"}}\ndata_balance = df.labels.value_counts()\ndata_balance\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:54.285007Z\",\"iopub.execute_input\":\"2024-05-28T17:35:54.285376Z\",\"iopub.status.idle\":\"2024-05-28T17:35:54.290068Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:54.285347Z\",\"shell.execute_reply\":\"2024-05-28T17:35:54.289180Z\"}}\ndef custom_autopct(pct):\n    total = sum(data_balance)\n    val = int(round(pct*total/100.0))\n    return \"{:.1f}%\\n({:d})\".format(pct, val)\n\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:55.989036Z\",\"iopub.execute_input\":\"2024-05-28T17:35:55.989776Z\",\"iopub.status.idle\":\"2024-05-28T17:35:56.205027Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:55.989740Z\",\"shell.execute_reply\":\"2024-05-28T17:35:56.204157Z\"}}\nplt.pie(data_balance, labels = data_balance.index, autopct=custom_autopct, colors = [\"#FF0000\", \"#FF69B4\", \"#0000FF\", \"#FFFFFF\", \"#00FF00\", \"#800080\", \"#FFFF00\", \"#A52A2A\", \"#40E0D0\", \"#FFA500\"])\nplt.title(\"Data balance\")\nplt.axis(\"equal\")\nplt.show()\n\n# %% [markdown]\n# # Helper Functions\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:35:59.344970Z\",\"iopub.execute_input\":\"2024-05-28T17:35:59.345673Z\",\"iopub.status.idle\":\"2024-05-28T17:35:59.354549Z\",\"shell.execute_reply.started\":\"2024-05-28T17:35:59.345640Z\",\"shell.execute_reply\":\"2024-05-28T17:35:59.353425Z\"}}\ndef model_performance(history, Epochs):\n    tr_acc = history.history['accuracy']\n    tr_loss = history.history['loss']\n    val_acc = history.history['val_accuracy']\n    val_loss = history.history['val_loss']\n    \n    Epochs = [i+1 for i in range(len(tr_acc))]\n    \n    plt.figure(figsize= (20, 8))\n    plt.style.use('fivethirtyeight')\n    \n    plt.subplot(1, 2, 1)\n    plt.plot(Epochs, tr_loss, 'r', label= 'Training loss')\n    plt.plot(Epochs, val_loss, 'g', label= 'Validation loss')\n    plt.title('Training and Validation Loss')\n    plt.xlabel('Epochs')\n    plt.ylabel('Loss')\n    plt.legend()\n    \n    plt.subplot(1, 2, 2)\n    plt.plot(Epochs, tr_acc, 'r', label= 'Training Accuracy')\n    plt.plot(Epochs, val_acc, 'g', label= 'Validation Accuracy')\n    plt.title('Training and Validation Accuracy')\n    plt.xlabel('Epochs')\n    plt.ylabel('Accuracy')\n    plt.legend()\n    \n    plt.tight_layout\n    plt.show()\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:02.814937Z\",\"iopub.execute_input\":\"2024-05-28T17:36:02.815863Z\",\"iopub.status.idle\":\"2024-05-28T17:36:02.822341Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:02.815827Z\",\"shell.execute_reply\":\"2024-05-28T17:36:02.821266Z\"}}\ndef model_evaluation(model):\n    train_score = model.evaluate(train_gen, verbose= 1)\n    valid_score = model.evaluate(valid_gen, verbose= 1)\n    test_score = model.evaluate(test_gen, verbose= 1)\n    \n    print(\"Train Loss: \", train_score[0])\n    print(\"Train Accuracy: \", train_score[1])\n    print('-' * 20)\n    print(\"Validation Loss: \", valid_score[0])\n    print(\"Validation Accuracy: \", valid_score[1])\n    print('-' * 20)\n    print(\"Test Loss: \", test_score[0])\n    print(\"Test Accuracy: \", test_score[1])\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:05.013333Z\",\"iopub.execute_input\":\"2024-05-28T17:36:05.014272Z\",\"iopub.status.idle\":\"2024-05-28T17:36:05.018961Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:05.014234Z\",\"shell.execute_reply\":\"2024-05-28T17:36:05.017971Z\"}}\ndef get_pred(model, test_gen):\n    \n    preds = model.predict(test_gen)\n    y_pred = np.argmax(preds, axis = 1)\n    \n    return y_pred\n\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:06.708633Z\",\"iopub.execute_input\":\"2024-05-28T17:36:06.708985Z\",\"iopub.status.idle\":\"2024-05-28T17:36:06.717521Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:06.708958Z\",\"shell.execute_reply\":\"2024-05-28T17:36:06.716540Z\"}}\ndef plot_confusion_matrix(test_gen, y_pred):\n    \n    g_dict = test_gen.class_indices\n    classes = list(g_dict.keys())\n    \n    cm = confusion_matrix(test_gen.classes, y_pred)\n\n    plt.figure(figsize= (10, 10))\n    plt.imshow(cm, interpolation= 'nearest', cmap= plt.cm.Blues)\n    plt.title('Confusion Matrix')\n    plt.colorbar()\n    \n    tick_marks = np.arange(len(classes))\n    plt.xticks(tick_marks, classes, rotation= 45, fontsize=8)  \n    plt.yticks(tick_marks, classes)\n    \n    thresh = cm.max() / 2.\n    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):\n        plt.text(j, i, cm[i, j], horizontalalignment= 'center', color= 'white' if cm[i, j] > thresh else 'black')\n    \n    \n    plt.tight_layout()\n    plt.ylabel('True Label')\n    plt.xlabel('Predicted Label')\n    \n    plt.show()\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:10.342783Z\",\"iopub.execute_input\":\"2024-05-28T17:36:10.343158Z\",\"iopub.status.idle\":\"2024-05-28T17:36:10.349249Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:10.343125Z\",\"shell.execute_reply\":\"2024-05-28T17:36:10.347950Z\"}}\ndef conv_block(filters, act='relu'):\n    \n    block = Sequential()\n    block.add(Conv2D(filters, 3, activation=act, padding='same'))\n    block.add(Conv2D(filters, 3, activation=act, padding='same'))\n    block.add(BatchNormalization())\n    block.add(MaxPooling2D())\n    \n    return block\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:11.983852Z\",\"iopub.execute_input\":\"2024-05-28T17:36:11.984543Z\",\"iopub.status.idle\":\"2024-05-28T17:36:11.989729Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:11.984503Z\",\"shell.execute_reply\":\"2024-05-28T17:36:11.988753Z\"}}\ndef dense_block(units, dropout_rate, act='relu'):\n    \n    block = Sequential()\n    block.add(Dense(units, activation=act))\n    block.add(BatchNormalization())\n    block.add(Dropout(dropout_rate))\n    \n    return block\n\n# %% [markdown]\n# # Train - Test Split\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:14.339394Z\",\"iopub.execute_input\":\"2024-05-28T17:36:14.340021Z\",\"iopub.status.idle\":\"2024-05-28T17:36:14.350096Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:14.339969Z\",\"shell.execute_reply\":\"2024-05-28T17:36:14.349129Z\"}}\ntrain_df, ts_df = train_test_split(df, train_size = 0.8, shuffle = True, random_state = 42)\n\nvalid_df, test_df = train_test_split(ts_df, train_size = 0.5, shuffle = True, random_state = 42)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:16.767843Z\",\"iopub.execute_input\":\"2024-05-28T17:36:16.768450Z\",\"iopub.status.idle\":\"2024-05-28T17:36:29.678566Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:16.768417Z\",\"shell.execute_reply\":\"2024-05-28T17:36:29.677806Z\"}}\nbatch_size = 16\nimg_size = (224, 224)\n\ntr_gen = ImageDataGenerator(rescale=1. / 255)\nts_gen = ImageDataGenerator(rescale=1. / 255)\n\n\ntrain_gen = tr_gen.flow_from_dataframe( train_df, x_col= 'filepaths', y_col= 'labels', target_size= img_size, class_mode= 'categorical',\n                                    color_mode= 'rgb', shuffle= True, batch_size= batch_size)\n\nvalid_gen = ts_gen.flow_from_dataframe( valid_df, x_col= 'filepaths', y_col= 'labels', target_size= img_size, class_mode= 'categorical',\n                                    color_mode= 'rgb', shuffle= True, batch_size= batch_size)\n\ntest_gen = ts_gen.flow_from_dataframe( test_df, x_col= 'filepaths', y_col= 'labels', target_size= img_size, class_mode= 'categorical',\n                                    color_mode= 'rgb', shuffle= False, batch_size= batch_size)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:36.027717Z\",\"iopub.execute_input\":\"2024-05-28T17:36:36.028345Z\",\"iopub.status.idle\":\"2024-05-28T17:36:42.018099Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:36.028313Z\",\"shell.execute_reply\":\"2024-05-28T17:36:42.016709Z\"}}\ng_dict = train_gen.class_indices     \nclasses = list(g_dict.keys())       \nimages, labels = next(train_gen)      \n\n# ploting the patch size samples\nplt.figure(figsize= (20, 20))\n\nfor i in range(batch_size):\n    plt.subplot(4, 4, i + 1)\n    image = images[i]\n    plt.imshow(image)\n    index = np.argmax(labels[i])  # get image index\n    class_name = classes[index]   # get class of image\n    plt.title(class_name, color= 'black', fontsize= 16)\n    plt.axis('off')\nplt.tight_layout()\nplt.show()\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:36:57.339236Z\",\"iopub.execute_input\":\"2024-05-28T17:36:57.340077Z\",\"iopub.status.idle\":\"2024-05-28T17:36:57.345078Z\",\"shell.execute_reply.started\":\"2024-05-28T17:36:57.340039Z\",\"shell.execute_reply\":\"2024-05-28T17:36:57.344139Z\"}}\nimg_size = (224, 224)\nchannels = 3\nimg_shape = (img_size[0], img_size[1], channels)\n\nclass_counts = len(list(train_gen.class_indices.keys()))\n\n# %% [markdown]\n# # **T-Net Architecture Building**\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:37:04.118055Z\",\"iopub.execute_input\":\"2024-05-28T17:37:04.118754Z\",\"iopub.status.idle\":\"2024-05-28T17:37:04.125586Z\",\"shell.execute_reply.started\":\"2024-05-28T17:37:04.118722Z\",\"shell.execute_reply\":\"2024-05-28T17:37:04.124666Z\"}}\ndef build_inner_encoder_decoder(input_shape):\n    inputs = Input(shape=input_shape)\n    \n    # Inner encoder\n    x = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)\n    x = MaxPooling2D((2, 2), padding='same')(x)\n    \n    # Inner bottleneck\n    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)\n    \n    # Inner decoder\n    x = UpSampling2D((2, 2))(x)\n    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)\n    \n    # Output\n    outputs = Conv2D(input_shape[-1], (3, 3), activation='sigmoid', padding='same')(x)\n    \n    return Model(inputs, outputs, name='inner_encoder_decoder')\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:45:32.516956Z\",\"iopub.execute_input\":\"2024-05-28T17:45:32.517709Z\",\"iopub.status.idle\":\"2024-05-28T17:45:32.524938Z\",\"shell.execute_reply.started\":\"2024-05-28T17:45:32.517675Z\",\"shell.execute_reply\":\"2024-05-28T17:45:32.524042Z\"}}\ndef build_outer_encoder_decoder(input_shape):\n    inputs = Input(shape=input_shape)\n    \n    # Outer encoder\n    x = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)\n    x = MaxPooling2D((2, 2), padding='same')(x)\n    \n    # Outer bottleneck\n    inner_input_shape = (input_shape[0] // 2, input_shape[1] // 2, 64)\n    inner_encoder_decoder = build_inner_encoder_decoder(inner_input_shape)\n    x = inner_encoder_decoder(x)\n    \n    # Outer decoder\n    x = UpSampling2D((2, 2))(x)\n    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)\n    \n    # Output\n    outputs = Conv2D(input_shape[-1], (3, 3), activation='softmax', padding='same')(x)\n    \n    return Model(inputs, outputs, name='outer_encoder_decoder')\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:45:34.129418Z\",\"iopub.execute_input\":\"2024-05-28T17:45:34.129812Z\",\"iopub.status.idle\":\"2024-05-28T17:45:34.215485Z\",\"shell.execute_reply.started\":\"2024-05-28T17:45:34.129782Z\",\"shell.execute_reply\":\"2024-05-28T17:45:34.214639Z\"}}\nmodel = build_outer_encoder_decoder(img_shape)\nmodel.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])\nmodel.summary()\n\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:45:37.038754Z\",\"iopub.execute_input\":\"2024-05-28T17:45:37.039138Z\",\"iopub.status.idle\":\"2024-05-28T17:45:37.045126Z\",\"shell.execute_reply.started\":\"2024-05-28T17:45:37.039107Z\",\"shell.execute_reply\":\"2024-05-28T17:45:37.044312Z\"}}\nepochs = 20   \n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-05-28T17:45:38.310535Z\",\"iopub.execute_input\":\"2024-05-28T17:45:38.311304Z\",\"iopub.status.idle\":\"2024-05-28T17:45:38.320180Z\",\"shell.execute_reply.started\":\"2024-05-28T17:45:38.311266Z\",\"shell.execute_reply\":\"2024-05-28T17:45:38.319231Z\"}}\nmodel.compile(Adamax(learning_rate= 0.001), loss= 'mean_squared_error', metrics= ['accuracy'])\n\n# %% [code]\ntnet_history = model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)\n\n# %% [markdown]\n# # Model Performance and Evaluation****\n\n# %% [code]\nmodel_performance(tnet_history, epochs)\n\n# %% [code]\nmodel_evaluation(model)\n\n# %% [code]\ny_pred = get_pred(model, test_gen)\n\nplot_confusion_matrix(test_gen, y_pred)\n\n# %% [markdown]\n# # CNN Model Building\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:29:19.506394Z\",\"iopub.execute_input\":\"2024-04-15T14:29:19.506782Z\",\"iopub.status.idle\":\"2024-04-15T14:29:21.190008Z\",\"shell.execute_reply.started\":\"2024-04-15T14:29:19.506755Z\",\"shell.execute_reply\":\"2024-04-15T14:29:21.189227Z\"}}\ncnn_model = Sequential()\n\ncnn_model.add(Conv2D(filters=16, kernel_size=(3,3), padding=\"same\", activation=\"relu\", input_shape= img_shape))\ncnn_model.add(BatchNormalization())\ncnn_model.add(MaxPooling2D())\n\ncnn_model.add(conv_block(32))\n\ncnn_model.add(conv_block(64))\n\ncnn_model.add(conv_block(128))\n\ncnn_model.add(conv_block(256))\n\ncnn_model.add(conv_block(512))\n\ncnn_model.add(Flatten())\n\ncnn_model.add(dense_block(256, 0.5))\n\ncnn_model.add(dense_block(128, 0.3))\n\ncnn_model.add(dense_block(64, 0.2))\n\ncnn_model.add(dense_block(32, 0.2))\n\ncnn_model.add(Dense(class_counts, activation = \"softmax\"))\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:29:29.379005Z\",\"iopub.execute_input\":\"2024-04-15T14:29:29.379894Z\",\"iopub.status.idle\":\"2024-04-15T14:29:29.420021Z\",\"shell.execute_reply.started\":\"2024-04-15T14:29:29.379862Z\",\"shell.execute_reply\":\"2024-04-15T14:29:29.419158Z\"},\"_kg_hide-input\":true,\"_kg_hide-output\":false}\ncnn_model.compile(Adamax(learning_rate= 0.001), loss= 'categorical_crossentropy', metrics= ['accuracy'])\n\ncnn_model.summary()\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:30:03.131369Z\",\"iopub.execute_input\":\"2024-04-15T14:30:03.131742Z\",\"iopub.status.idle\":\"2024-04-15T14:41:00.881761Z\",\"shell.execute_reply.started\":\"2024-04-15T14:30:03.131714Z\",\"shell.execute_reply\":\"2024-04-15T14:41:00.880733Z\"}}\nepochs = 20   \n\nhistory = cnn_model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)\n\n# %% [markdown]\n# # CNN Model Performance - Prediction\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:41:23.081726Z\",\"iopub.execute_input\":\"2024-04-15T14:41:23.082092Z\",\"iopub.status.idle\":\"2024-04-15T14:41:23.871007Z\",\"shell.execute_reply.started\":\"2024-04-15T14:41:23.082065Z\",\"shell.execute_reply\":\"2024-04-15T14:41:23.870052Z\"}}\nmodel_performance(history, epochs)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:42:02.079052Z\",\"iopub.execute_input\":\"2024-04-15T14:42:02.079411Z\",\"iopub.status.idle\":\"2024-04-15T14:42:38.633792Z\",\"shell.execute_reply.started\":\"2024-04-15T14:42:02.079382Z\",\"shell.execute_reply\":\"2024-04-15T14:42:38.632859Z\"}}\nmodel_evaluation(cnn_model)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:44:51.5085Z\",\"iopub.execute_input\":\"2024-04-15T14:44:51.509192Z\",\"iopub.status.idle\":\"2024-04-15T14:44:55.290981Z\",\"shell.execute_reply.started\":\"2024-04-15T14:44:51.509159Z\",\"shell.execute_reply\":\"2024-04-15T14:44:55.290052Z\"}}\ny_pred = get_pred(cnn_model, test_gen)\n\nplot_confusion_matrix(test_gen, y_pred)\n\n# %% [markdown]\n# # EfficientNetB3 Model Building\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:45:59.762077Z\",\"iopub.execute_input\":\"2024-04-15T14:45:59.762457Z\",\"iopub.status.idle\":\"2024-04-15T14:46:02.414941Z\",\"shell.execute_reply.started\":\"2024-04-15T14:45:59.762429Z\",\"shell.execute_reply\":\"2024-04-15T14:46:02.413891Z\"}}\n\nbase_model = EfficientNetB3(weights='imagenet', include_top=False, input_shape = img_shape, pooling= None)\n\nx = base_model.output\nx = GlobalAveragePooling2D()(x)\nx = BatchNormalization()(x)\nx = dense_block(128, 0.5)(x)\nx = dense_block(32, 0.2)(x)\npredictions = Dense(class_counts, activation = \"softmax\")(x)    # output layer with softmax activation\n\n\nEfficientNetB3_model = Model(inputs = base_model.input, outputs = predictions)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:46:12.856747Z\",\"iopub.execute_input\":\"2024-04-15T14:46:12.857595Z\",\"iopub.status.idle\":\"2024-04-15T14:46:13.358992Z\",\"shell.execute_reply.started\":\"2024-04-15T14:46:12.857561Z\",\"shell.execute_reply\":\"2024-04-15T14:46:13.357989Z\"}}\nEfficientNetB3_model.compile(optimizer=Adamax(learning_rate=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])\n\nEfficientNetB3_model.summary()\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T14:46:35.332944Z\",\"iopub.execute_input\":\"2024-04-15T14:46:35.333319Z\",\"iopub.status.idle\":\"2024-04-15T15:13:29.727127Z\",\"shell.execute_reply.started\":\"2024-04-15T14:46:35.33329Z\",\"shell.execute_reply\":\"2024-04-15T15:13:29.7263Z\"}}\nepochs = 20   \n\nEfficientNetB3_history = EfficientNetB3_model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)\n\n# %% [markdown]\n# # EfficientNetB3 Model Performance - Prediction\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:14:05.638552Z\",\"iopub.execute_input\":\"2024-04-15T15:14:05.639261Z\",\"iopub.status.idle\":\"2024-04-15T15:14:06.331416Z\",\"shell.execute_reply.started\":\"2024-04-15T15:14:05.639231Z\",\"shell.execute_reply\":\"2024-04-15T15:14:06.330476Z\"}}\nmodel_performance(EfficientNetB3_history, epochs)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:14:09.964357Z\",\"iopub.execute_input\":\"2024-04-15T15:14:09.964911Z\",\"iopub.status.idle\":\"2024-04-15T15:14:40.213908Z\",\"shell.execute_reply.started\":\"2024-04-15T15:14:09.964871Z\",\"shell.execute_reply\":\"2024-04-15T15:14:40.212991Z\"}}\nmodel_evaluation(EfficientNetB3_model)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:14:44.783875Z\",\"iopub.execute_input\":\"2024-04-15T15:14:44.784843Z\",\"iopub.status.idle\":\"2024-04-15T15:15:05.192854Z\",\"shell.execute_reply.started\":\"2024-04-15T15:14:44.784808Z\",\"shell.execute_reply\":\"2024-04-15T15:15:05.19185Z\"}}\ny_pred = get_pred(EfficientNetB3_model, test_gen)\n\n\nplot_confusion_matrix(test_gen, y_pred)\n\n# %% [markdown]\n# # VGG16 Model Building\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:16:16.330361Z\",\"iopub.execute_input\":\"2024-04-15T15:16:16.330797Z\",\"iopub.status.idle\":\"2024-04-15T15:16:16.995016Z\",\"shell.execute_reply.started\":\"2024-04-15T15:16:16.330766Z\",\"shell.execute_reply\":\"2024-04-15T15:16:16.994043Z\"}}\nbase_model = VGG16(weights='imagenet', include_top=False, input_shape = img_shape, pooling= 'max')\n\nfor layer in base_model.layers[:15]:\n    layer.trainable = False\n    \n    \n\nx = base_model.output\nx = Flatten()(x)\nx = Dense(512, activation = 'relu')(x)\nx = Dropout(0.2)(x)   # # Dropout layer to prevent overfitting\nx = Dense(256, activation = 'relu')(x)\nx = Dense(128, activation = 'relu')(x)\nx = Dense(32, activation = 'relu')(x)\npredictions = Dense(class_counts, activation = \"sigmoid\")(x)    # output layer with softmax activation\n\n\nVGG16_model = Model(inputs = base_model.input, outputs = predictions)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:16:27.152954Z\",\"iopub.execute_input\":\"2024-04-15T15:16:27.153399Z\",\"iopub.status.idle\":\"2024-04-15T15:16:27.159771Z\",\"shell.execute_reply.started\":\"2024-04-15T15:16:27.153353Z\",\"shell.execute_reply\":\"2024-04-15T15:16:27.158557Z\"}}\nfor layer in VGG16_model.layers:\n    print(layer.name, layer.trainable)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:16:53.941847Z\",\"iopub.execute_input\":\"2024-04-15T15:16:53.942452Z\",\"iopub.status.idle\":\"2024-04-15T15:16:53.986384Z\",\"shell.execute_reply.started\":\"2024-04-15T15:16:53.942424Z\",\"shell.execute_reply\":\"2024-04-15T15:16:53.985398Z\"}}\nVGG16_model.compile(optimizer=Adamax(learning_rate=0.0001), loss='binary_crossentropy', metrics=['accuracy'])\n\nVGG16_model.summary()\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:17:05.231844Z\",\"iopub.execute_input\":\"2024-04-15T15:17:05.232796Z\",\"iopub.status.idle\":\"2024-04-15T15:32:26.425032Z\",\"shell.execute_reply.started\":\"2024-04-15T15:17:05.232764Z\",\"shell.execute_reply\":\"2024-04-15T15:32:26.424167Z\"}}\nepochs = 20   \n\nVGG16_history = VGG16_model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)\n\n# %% [markdown]\n# # VGG16 Model Performance - Prediction\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:32:35.618644Z\",\"iopub.execute_input\":\"2024-04-15T15:32:35.619007Z\",\"iopub.status.idle\":\"2024-04-15T15:32:36.374108Z\",\"shell.execute_reply.started\":\"2024-04-15T15:32:35.61898Z\",\"shell.execute_reply\":\"2024-04-15T15:32:36.373045Z\"}}\nmodel_performance(VGG16_history, epochs)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:32:42.352966Z\",\"iopub.execute_input\":\"2024-04-15T15:32:42.35384Z\",\"iopub.status.idle\":\"2024-04-15T15:33:26.388412Z\",\"shell.execute_reply.started\":\"2024-04-15T15:32:42.35381Z\",\"shell.execute_reply\":\"2024-04-15T15:33:26.387505Z\"}}\nmodel_evaluation(VGG16_model)\n\n# %% [code] {\"execution\":{\"iopub.status.busy\":\"2024-04-15T15:34:33.917247Z\",\"iopub.execute_input\":\"2024-04-15T15:34:33.917972Z\",\"iopub.status.idle\":\"2024-04-15T15:34:40.421059Z\",\"shell.execute_reply.started\":\"2024-04-15T15:34:33.917941Z\",\"shell.execute_reply\":\"2024-04-15T15:34:40.419843Z\"}}\ny_pred = get_pred(VGG16_model, test_gen)\n\nplot_confusion_matrix(test_gen, y_pred)","metadata":{"_uuid":"331115a5-4eff-4c4b-bbd4-93e90467db9c","_cell_guid":"9dc82708-05db-4360-80b8-d6347141e844","collapsed":false,"jupyter":{"outputs_hidden":false},"trusted":true},"execution_count":null,"outputs":[]}]}
+# # **T-Net Architecture Building**
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-05-28T17:37:04.118055Z","iopub.execute_input":"2024-05-28T17:37:04.118754Z","iopub.status.idle":"2024-05-28T17:37:04.125586Z","shell.execute_reply.started":"2024-05-28T17:37:04.118722Z","shell.execute_reply":"2024-05-28T17:37:04.124666Z"}}
+def build_inner_encoder_decoder(input_shape):
+    inputs = Input(shape=input_shape)
+    
+    # Inner encoder
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    
+    # Inner bottleneck
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+    
+    # Inner decoder
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    
+    # Output
+    outputs = Conv2D(input_shape[-1], (3, 3), activation='sigmoid', padding='same')(x)
+    
+    return Model(inputs, outputs, name='inner_encoder_decoder')
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-05-28T17:45:32.516956Z","iopub.execute_input":"2024-05-28T17:45:32.517709Z","iopub.status.idle":"2024-05-28T17:45:32.524938Z","shell.execute_reply.started":"2024-05-28T17:45:32.517675Z","shell.execute_reply":"2024-05-28T17:45:32.524042Z"}}
+def build_outer_encoder_decoder(input_shape):
+    inputs = Input(shape=input_shape)
+    
+    # Outer encoder
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
+    x = MaxPooling2D((2, 2), padding='same')(x)
+    
+    # Outer bottleneck
+    inner_input_shape = (input_shape[0] // 2, input_shape[1] // 2, 64)
+    inner_encoder_decoder = build_inner_encoder_decoder(inner_input_shape)
+    x = inner_encoder_decoder(x)
+    
+    # Outer decoder
+    x = UpSampling2D((2, 2))(x)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    
+    # Output
+    outputs = Conv2D(input_shape[-1], (3, 3), activation='softmax', padding='same')(x)
+    
+    return Model(inputs, outputs, name='outer_encoder_decoder')
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-05-28T17:45:34.129418Z","iopub.execute_input":"2024-05-28T17:45:34.129812Z","iopub.status.idle":"2024-05-28T17:45:34.215485Z","shell.execute_reply.started":"2024-05-28T17:45:34.129782Z","shell.execute_reply":"2024-05-28T17:45:34.214639Z"}}
+model = build_outer_encoder_decoder(img_shape)
+model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+model.summary()
+
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-05-28T17:45:37.038754Z","iopub.execute_input":"2024-05-28T17:45:37.039138Z","iopub.status.idle":"2024-05-28T17:45:37.045126Z","shell.execute_reply.started":"2024-05-28T17:45:37.039107Z","shell.execute_reply":"2024-05-28T17:45:37.044312Z"}}
+epochs = 20   
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-05-28T17:45:38.310535Z","iopub.execute_input":"2024-05-28T17:45:38.311304Z","iopub.status.idle":"2024-05-28T17:45:38.320180Z","shell.execute_reply.started":"2024-05-28T17:45:38.311266Z","shell.execute_reply":"2024-05-28T17:45:38.319231Z"}}
+model.compile(Adamax(learning_rate= 0.001), loss= 'mean_squared_error', metrics= ['accuracy'])
+
+# %% [code]
+tnet_history = model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)
+
+# %% [markdown]
+# # Model Performance and Evaluation****
+
+# %% [code]
+model_performance(tnet_history, epochs)
+
+# %% [code]
+model_evaluation(model)
+
+# %% [code]
+y_pred = get_pred(model, test_gen)
+
+plot_confusion_matrix(test_gen, y_pred)
+
+# %% [markdown]
+# # CNN Model Building
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:29:19.506394Z","iopub.execute_input":"2024-04-15T14:29:19.506782Z","iopub.status.idle":"2024-04-15T14:29:21.190008Z","shell.execute_reply.started":"2024-04-15T14:29:19.506755Z","shell.execute_reply":"2024-04-15T14:29:21.189227Z"}}
+cnn_model = Sequential()
+
+cnn_model.add(Conv2D(filters=16, kernel_size=(3,3), padding="same", activation="relu", input_shape= img_shape))
+cnn_model.add(BatchNormalization())
+cnn_model.add(MaxPooling2D())
+
+cnn_model.add(conv_block(32))
+
+cnn_model.add(conv_block(64))
+
+cnn_model.add(conv_block(128))
+
+cnn_model.add(conv_block(256))
+
+cnn_model.add(conv_block(512))
+
+cnn_model.add(Flatten())
+
+cnn_model.add(dense_block(256, 0.5))
+
+cnn_model.add(dense_block(128, 0.3))
+
+cnn_model.add(dense_block(64, 0.2))
+
+cnn_model.add(dense_block(32, 0.2))
+
+cnn_model.add(Dense(class_counts, activation = "softmax"))
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:29:29.379005Z","iopub.execute_input":"2024-04-15T14:29:29.379894Z","iopub.status.idle":"2024-04-15T14:29:29.420021Z","shell.execute_reply.started":"2024-04-15T14:29:29.379862Z","shell.execute_reply":"2024-04-15T14:29:29.419158Z"},"_kg_hide-input":true,"_kg_hide-output":false}
+cnn_model.compile(Adamax(learning_rate= 0.001), loss= 'categorical_crossentropy', metrics= ['accuracy'])
+
+cnn_model.summary()
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:30:03.131369Z","iopub.execute_input":"2024-04-15T14:30:03.131742Z","iopub.status.idle":"2024-04-15T14:41:00.881761Z","shell.execute_reply.started":"2024-04-15T14:30:03.131714Z","shell.execute_reply":"2024-04-15T14:41:00.880733Z"}}
+epochs = 20   
+
+history = cnn_model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)
+
+# %% [markdown]
+# # CNN Model Performance - Prediction
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:41:23.081726Z","iopub.execute_input":"2024-04-15T14:41:23.082092Z","iopub.status.idle":"2024-04-15T14:41:23.871007Z","shell.execute_reply.started":"2024-04-15T14:41:23.082065Z","shell.execute_reply":"2024-04-15T14:41:23.870052Z"}}
+model_performance(history, epochs)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:42:02.079052Z","iopub.execute_input":"2024-04-15T14:42:02.079411Z","iopub.status.idle":"2024-04-15T14:42:38.633792Z","shell.execute_reply.started":"2024-04-15T14:42:02.079382Z","shell.execute_reply":"2024-04-15T14:42:38.632859Z"}}
+model_evaluation(cnn_model)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:44:51.5085Z","iopub.execute_input":"2024-04-15T14:44:51.509192Z","iopub.status.idle":"2024-04-15T14:44:55.290981Z","shell.execute_reply.started":"2024-04-15T14:44:51.509159Z","shell.execute_reply":"2024-04-15T14:44:55.290052Z"}}
+y_pred = get_pred(cnn_model, test_gen)
+
+plot_confusion_matrix(test_gen, y_pred)
+
+# %% [markdown]
+# # EfficientNetB3 Model Building
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:45:59.762077Z","iopub.execute_input":"2024-04-15T14:45:59.762457Z","iopub.status.idle":"2024-04-15T14:46:02.414941Z","shell.execute_reply.started":"2024-04-15T14:45:59.762429Z","shell.execute_reply":"2024-04-15T14:46:02.413891Z"}}
+
+base_model = EfficientNetB3(weights='imagenet', include_top=False, input_shape = img_shape, pooling= None)
+
+x = base_model.output
+x = GlobalAveragePooling2D()(x)
+x = BatchNormalization()(x)
+x = dense_block(128, 0.5)(x)
+x = dense_block(32, 0.2)(x)
+predictions = Dense(class_counts, activation = "softmax")(x)    # output layer with softmax activation
+
+
+EfficientNetB3_model = Model(inputs = base_model.input, outputs = predictions)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:46:12.856747Z","iopub.execute_input":"2024-04-15T14:46:12.857595Z","iopub.status.idle":"2024-04-15T14:46:13.358992Z","shell.execute_reply.started":"2024-04-15T14:46:12.857561Z","shell.execute_reply":"2024-04-15T14:46:13.357989Z"}}
+EfficientNetB3_model.compile(optimizer=Adamax(learning_rate=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])
+
+EfficientNetB3_model.summary()
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T14:46:35.332944Z","iopub.execute_input":"2024-04-15T14:46:35.333319Z","iopub.status.idle":"2024-04-15T15:13:29.727127Z","shell.execute_reply.started":"2024-04-15T14:46:35.33329Z","shell.execute_reply":"2024-04-15T15:13:29.7263Z"}}
+epochs = 20   
+
+EfficientNetB3_history = EfficientNetB3_model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)
+
+# %% [markdown]
+# # EfficientNetB3 Model Performance - Prediction
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:14:05.638552Z","iopub.execute_input":"2024-04-15T15:14:05.639261Z","iopub.status.idle":"2024-04-15T15:14:06.331416Z","shell.execute_reply.started":"2024-04-15T15:14:05.639231Z","shell.execute_reply":"2024-04-15T15:14:06.330476Z"}}
+model_performance(EfficientNetB3_history, epochs)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:14:09.964357Z","iopub.execute_input":"2024-04-15T15:14:09.964911Z","iopub.status.idle":"2024-04-15T15:14:40.213908Z","shell.execute_reply.started":"2024-04-15T15:14:09.964871Z","shell.execute_reply":"2024-04-15T15:14:40.212991Z"}}
+model_evaluation(EfficientNetB3_model)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:14:44.783875Z","iopub.execute_input":"2024-04-15T15:14:44.784843Z","iopub.status.idle":"2024-04-15T15:15:05.192854Z","shell.execute_reply.started":"2024-04-15T15:14:44.784808Z","shell.execute_reply":"2024-04-15T15:15:05.19185Z"}}
+y_pred = get_pred(EfficientNetB3_model, test_gen)
+
+
+plot_confusion_matrix(test_gen, y_pred)
+
+# %% [markdown]
+# # VGG16 Model Building
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:16:16.330361Z","iopub.execute_input":"2024-04-15T15:16:16.330797Z","iopub.status.idle":"2024-04-15T15:16:16.995016Z","shell.execute_reply.started":"2024-04-15T15:16:16.330766Z","shell.execute_reply":"2024-04-15T15:16:16.994043Z"}}
+base_model = VGG16(weights='imagenet', include_top=False, input_shape = img_shape, pooling= 'max')
+
+for layer in base_model.layers[:15]:
+    layer.trainable = False
+    
+    
+
+x = base_model.output
+x = Flatten()(x)
+x = Dense(512, activation = 'relu')(x)
+x = Dropout(0.2)(x)   # # Dropout layer to prevent overfitting
+x = Dense(256, activation = 'relu')(x)
+x = Dense(128, activation = 'relu')(x)
+x = Dense(32, activation = 'relu')(x)
+predictions = Dense(class_counts, activation = "sigmoid")(x)    # output layer with softmax activation
+
+
+VGG16_model = Model(inputs = base_model.input, outputs = predictions)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:16:27.152954Z","iopub.execute_input":"2024-04-15T15:16:27.153399Z","iopub.status.idle":"2024-04-15T15:16:27.159771Z","shell.execute_reply.started":"2024-04-15T15:16:27.153353Z","shell.execute_reply":"2024-04-15T15:16:27.158557Z"}}
+for layer in VGG16_model.layers:
+    print(layer.name, layer.trainable)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:16:53.941847Z","iopub.execute_input":"2024-04-15T15:16:53.942452Z","iopub.status.idle":"2024-04-15T15:16:53.986384Z","shell.execute_reply.started":"2024-04-15T15:16:53.942424Z","shell.execute_reply":"2024-04-15T15:16:53.985398Z"}}
+VGG16_model.compile(optimizer=Adamax(learning_rate=0.0001), loss='binary_crossentropy', metrics=['accuracy'])
+
+VGG16_model.summary()
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:17:05.231844Z","iopub.execute_input":"2024-04-15T15:17:05.232796Z","iopub.status.idle":"2024-04-15T15:32:26.425032Z","shell.execute_reply.started":"2024-04-15T15:17:05.232764Z","shell.execute_reply":"2024-04-15T15:32:26.424167Z"}}
+epochs = 20   
+
+VGG16_history = VGG16_model.fit(train_gen, epochs= epochs, verbose= 1, validation_data= valid_gen, shuffle= False)
+
+# %% [markdown]
+# # VGG16 Model Performance - Prediction
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:32:35.618644Z","iopub.execute_input":"2024-04-15T15:32:35.619007Z","iopub.status.idle":"2024-04-15T15:32:36.374108Z","shell.execute_reply.started":"2024-04-15T15:32:35.61898Z","shell.execute_reply":"2024-04-15T15:32:36.373045Z"}}
+model_performance(VGG16_history, epochs)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:32:42.352966Z","iopub.execute_input":"2024-04-15T15:32:42.35384Z","iopub.status.idle":"2024-04-15T15:33:26.388412Z","shell.execute_reply.started":"2024-04-15T15:32:42.35381Z","shell.execute_reply":"2024-04-15T15:33:26.387505Z"}}
+model_evaluation(VGG16_model)
+
+# %% [code] {"execution":{"iopub.status.busy":"2024-04-15T15:34:33.917247Z","iopub.execute_input":"2024-04-15T15:34:33.917972Z","iopub.status.idle":"2024-04-15T15:34:40.421059Z","shell.execute_reply.started":"2024-04-15T15:34:33.917941Z","shell.execute_reply":"2024-04-15T15:34:40.419843Z"}}
+y_pred = get_pred(VGG16_model, test_gen)
+
+plot_confusion_matrix(test_gen, y_pred)
